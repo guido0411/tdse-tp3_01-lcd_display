@@ -1,0 +1,145 @@
+1. Archivos
+
+display.h: contiene la declaración de la clase Display y sus métodos públicos/privados.
+
+display.cpp: contiene la implementación de esos métodos y la lógica que maneja el LCD.
+
+2. Tipos de datos y estructuras usadas
+Tipos básicos:
+
+uint8_t: entero sin signo de 8 bits (típico en microcontroladores).
+
+bool: tipo lógico (true/false).
+
+void: métodos que no retornan valor.
+
+Estructuras de datos:
+
+No hay struct explícitas en este módulo, pero sí clases y arreglos de caracteres para manejar los textos que se muestran en el LCD.
+
+3. La clase Display
+
+En display.h se declara:
+
+class Display {
+public:
+    Display();
+    void Init();
+    void Clear();
+    void WriteChar(uint8_t row, uint8_t col, char c);
+    void WriteString(uint8_t row, uint8_t col, const char *str);
+    void WriteInt(uint8_t row, uint8_t col, int value);
+    void WriteFloat(uint8_t row, uint8_t col, float value, uint8_t precision);
+    void ShiftLeft();
+    void ShiftRight();
+
+private:
+    void SendCommand(uint8_t cmd);
+    void SendData(uint8_t data);
+    void PulseEnable();
+    void GpioInit();
+};
+
+Métodos principales (públicos):
+
+Init(): inicializa el display (configuración de GPIOs y secuencia de comandos).
+
+Clear(): borra la pantalla LCD.
+
+WriteChar(row, col, c): escribe un carácter en una posición (fila, columna).
+
+WriteString(row, col, str): escribe una cadena de caracteres (string de C).
+
+WriteInt / WriteFloat: convierten números a texto y los muestran en el LCD.
+
+ShiftLeft() / ShiftRight(): hacen corrimientos de todo el contenido del display.
+
+Métodos privados:
+
+SendCommand(uint8_t cmd): envía un comando al LCD (ej: limpiar, mover cursor).
+
+SendData(uint8_t data): envía datos (caracteres).
+
+PulseEnable(): genera un pulso en la línea EN del LCD para que se registre un dato/comando.
+
+GpioInit(): configura los pines del microcontrolador que se conectan al display.
+
+4. Implementación (display.cpp)
+Inicialización del LCD
+
+En el método Init():
+
+Se llama a GpioInit() para configurar los pines como salida.
+
+Se envía la secuencia de comandos estándar del controlador HD44780 (el clásico de los LCDs 16x2, 20x4, etc.).
+Ejemplo: configurar el modo de 4 bits, encender el display, limpiar pantalla, etc.
+
+void Display::Init() {
+    GpioInit();
+    SendCommand(0x33);
+    SendCommand(0x32);
+    SendCommand(0x28);
+    SendCommand(0x0C);
+    SendCommand(0x06);
+    SendCommand(0x01);
+}
+
+Escritura de caracteres y strings
+
+WriteChar(row, col, c) primero calcula la dirección del cursor en memoria del LCD según la fila y columna. Luego envía el comando Set DDRAM Address (0x80 + posición). Finalmente manda el carácter con SendData(c).
+
+WriteString(row, col, str) recorre la cadena str y va llamando a WriteChar.
+
+Manejo de números
+
+WriteInt convierte un entero a string (sprintf) y lo escribe.
+
+WriteFloat hace lo mismo pero con formato de número flotante y precisión configurable.
+
+Corrimientos
+
+ShiftLeft() → manda comando 0x18 (shift a la izquierda).
+
+ShiftRight() → manda comando 0x1C (shift a la derecha).
+
+5. Acceso al hardware (GPIOs)
+
+El punto clave:
+El LCD se conecta al microcontrolador mediante GPIOs que representan las señales clásicas:
+
+RS (Register Select: comando/dato)
+
+EN (Enable: pulso para validar dato)
+
+D4–D7 (líneas de datos, porque se usa el modo de 4 bits).
+
+En SendCommand y SendData:
+
+Se ponen los bits en los pines correspondientes (HAL_GPIO_WritePin).
+
+Se genera el pulso de EN con PulseEnable().
+
+Ejemplo simplificado:
+
+void Display::SendCommand(uint8_t cmd) {
+    HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, GPIO_PIN_RESET); // RS = 0 → comando
+    // Se mandan los 4 bits altos de cmd
+    // Se hace PulseEnable()
+    // Luego los 4 bits bajos
+}
+
+
+En SendData es igual pero con RS = 1 (para datos).
+
+6. Resumen del flujo de hardware
+
+GPIOs → controlan las líneas del LCD (RS, EN, D4-D7).
+
+HAL_GPIO_WritePin (del HAL de STM32) → escribe directamente en el registro del microcontrolador que controla los pines.
+
+PulseEnable() → simula el pulso de habilitación que el LCD necesita para "capturar" el dato.
+
+✅ En conclusión:
+El módulo display encapsula en una clase C++ la lógica para manejar un LCD basado en HD44780, usando el modo de 4 bits.
+Los accesos al hardware se resuelven a través de la HAL de STM32 (HAL_GPIO_WritePin), que gestiona directamente los registros de GPIO del microcontrolador.
+Esto separa la lógica de alto nivel (escribir strings, números, mover pantalla) de la parte de bajo nivel (GPIOs y tiempos de pulso).
